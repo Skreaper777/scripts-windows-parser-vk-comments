@@ -8,49 +8,51 @@ def parse_votes(md_file: str):
     Парсит .md файл с комментариями из ВКонтакте и извлекает голоса пользователей.
     Возвращает DataFrame с колонками: Имя пользователя, Номер участника, Дата голосования.
     """
-    # Регулярки
+    # Регулярные выражения
     user_link_re = re.compile(r"\[([^\]]+)\]\(https://vk\.com/[^)]+\)")  # ссылка с непустым текстом
     number_re = re.compile(r"([1-9][0-9]?)")  # число от 1 до 99
-    date_re = re.compile(r"\[(\d{1,2} (?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек) в \d{1,2}:\d{2})\]", re.IGNORECASE)
+    date_re = re.compile(
+        r"\[(\d{1,2} (?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек) в \d{1,2}:\d{2})\]",
+        re.IGNORECASE
+    )
     show_votes_marker = "Показать список оценивших"
 
     records = []
+    # читаем все строки
     with open(md_file, 'r', encoding='utf-8') as f:
-        lines = [line.strip() for line in f]
+        lines = [line.rstrip('\n') for line in f]
 
     i = 0
     while i < len(lines):
-        line = lines[i]
-        # Ищем строку с пользователем
-        if user_link_re.search(line) and not line.startswith('!['):
-            username = user_link_re.search(line).group(1)
-            # Собираем блок комментария до следующего пользователя
-            block = []
-            i += 1
-            while i < len(lines) and not (user_link_re.search(lines[i]) and not lines[i].startswith('![')):
-                block.append(lines[i])
+        line = lines[i].strip()
+        # ищем имя пользователя
+        user_match = user_link_re.search(line)
+        if user_match:
+            username = user_match.group(1)
+            # следующая строка с комментарием (пропускаем пустые, картинки и пустые ссылки)
+            j = i + 1
+            while j < len(lines) and (
+                not lines[j].strip() or
+                lines[j].startswith('![') or
+                lines[j].startswith('[](')
+            ):
+                j += 1
+            if j >= len(lines):
                 i += 1
-
-            # Извлекаем номер участника
-            participant = None
-            for b in block:
-                if not b or b.startswith('![') or b.startswith('[]('):
-                    continue
-                num_match = number_re.search(b)
-                if num_match:
-                    participant = int(num_match.group(1))
-                    break
-
-            if participant is None:
-                # некорректный голос
                 continue
+            comment = lines[j].strip()
+            # ищем номер участника внутри комментария
+            num_match = number_re.search(comment)
+            if not num_match:
+                i = j + 1
+                continue
+            participant = int(num_match.group(1))
 
-            # Извлекаем дату голосования
+            # ищем дату голосования далее по документу
             date = ""
-            # находим маркер, затем ищем дату в следующих строках
-            for idx, b in enumerate(block):
-                if show_votes_marker in b:
-                    for later in block[idx+1:]:
+            for k in range(j + 1, len(lines)):
+                if show_votes_marker in lines[k]:
+                    for later in lines[k + 1:]:
                         date_match = date_re.search(later)
                         if date_match:
                             date = date_match.group(1)
@@ -62,6 +64,8 @@ def parse_votes(md_file: str):
                 'Номер участника': participant,
                 'Дата голосования': date
             })
+            # продолжаем после обработанного комментария
+            i = j + 1
         else:
             i += 1
 
@@ -87,8 +91,7 @@ def detail_by_user(df: pd.DataFrame):
     """
     Таблица №2 — Детализация по каждому пользователю.
     """
-    detail = df.copy().reset_index(drop=True)
-    return detail
+    return df.copy().reset_index(drop=True)
 
 
 def summarize_unique(df: pd.DataFrame):
@@ -107,7 +110,9 @@ def summarize_unique(df: pd.DataFrame):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Подсчет голосов из выгрузки комментариев ВКонтакте')
+    parser = argparse.ArgumentParser(
+        description='Подсчет голосов из выгрузки комментариев ВКонтакте'
+    )
     parser.add_argument('input_md', help='Путь к .md файлу с комментариями')
     parser.add_argument('--excel', action='store_true', help='Сохранить результаты в Excel (results.xlsx)')
     args = parser.parse_args()
@@ -117,15 +122,15 @@ def main():
 
     print('\nТаблица №1 — Сводная по всем голосам:')
     table1 = summarize_all(df)
-    print(table1.to_markdown(index=False))
+    print(table1.to_string(index=False))
 
     print('\nТаблица №2 — Детализация по пользователям:')
     table2 = detail_by_user(df)
-    print(table2.to_markdown(index=False))
+    print(table2.to_string(index=False))
 
     print('\nТаблица №3 — Сводная по уникальным голосам:')
     table3 = summarize_unique(df)
-    print(table3.to_markdown(index=False))
+    print(table3.to_string(index=False))
 
     if args.excel:
         with pd.ExcelWriter('results.xlsx') as writer:
