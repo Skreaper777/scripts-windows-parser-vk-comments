@@ -11,10 +11,6 @@ def parse_votes(md_file: str):
     # Регулярные выражения
     user_link_re = re.compile(r"\[([^\]]+)\]\(https://vk\.com/[^)]+\)")  # ссылка с непустым текстом
     number_re = re.compile(r"([1-9][0-9]?)")  # число от 1 до 99
-    date_re = re.compile(
-        r"\[(\d{1,2} (?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек) в \d{1,2}:\d{2})\]",
-        re.IGNORECASE
-    )
     show_votes_marker = "Показать список оценивших"
 
     records = []
@@ -48,15 +44,16 @@ def parse_votes(md_file: str):
                 continue
             participant = int(num_match.group(1))
 
-            # ищем дату голосования далее по документу
+            # ищем дату голосования: через одну строку после маркера
             date = ""
             for k in range(j + 1, len(lines)):
                 if show_votes_marker in lines[k]:
-                    for later in lines[k + 1:]:
-                        date_match = date_re.search(later)
-                        if date_match:
-                            date = date_match.group(1)
-                            break
+                    idx = k + 2
+                    if idx < len(lines):
+                        line_date = lines[idx].strip()
+                        m = re.match(r"\[([^]]+)\]\(", line_date)
+                        if m:
+                            date = m.group(1)
                     break
 
             records.append({
