@@ -10,6 +10,7 @@ def parse_date(raw: str) -> str:
     Поддерживает:
         - 'X минут(а/ы) назад'
         - 'час назад', 'два часа назад', 'три часа назад'
+        - 'X часов назад'
         - 'сегодня в HH:MM'
         - 'вчера в HH:MM'
         - 'DD мес. в HH:MM'
@@ -80,9 +81,7 @@ def parse_votes(md_file: str) -> pd.DataFrame:
             username = user_match.group(1)
             # ищем комментарий
             j = i + 1
-            while j < len(lines) and (
-                not lines[j].strip() or lines[j].startswith('![') or lines[j].startswith('[](')
-            ):
+            while j < len(lines) and (not lines[j].strip() or lines[j].startswith('![') or lines[j].startswith('[](')):
                 j += 1
             if j >= len(lines):
                 i += 1
@@ -103,42 +102,38 @@ def parse_votes(md_file: str) -> pd.DataFrame:
                         if m:
                             raw_date = m.group(1)
                     break
-            records.append({
-                'Имя пользователя': username,
-                'Номер участника': participant,
-                'Дата голосования': raw_date
-            })
+            records.append({'Имя пользователя': username,
+                            'Номер участника': participant,
+                            'Дата голосования': raw_date})
             i = j + 1
         else:
             i += 1
 
     df = pd.DataFrame(records)
     df['Дата и время (Excel)'] = df['Дата голосования'].apply(parse_date)
+    # добавляем отдельный столбец с датой для Excel
+    df['Дата'] = df['Дата и время (Excel)'].apply(lambda x: x.split(' ')[0] if isinstance(x, str) and ' ' in x else x)
     return df
 
 
 def summarize_all(df: pd.DataFrame) -> pd.DataFrame:
-    return (
-        df['Номер участника']
-        .value_counts()
-        .sort_index()
-        .rename_axis('Номер участника')
-        .reset_index(name='Количество голосов')
-    )
+    return (df['Номер участника']
+            .value_counts()
+            .sort_index()
+            .rename_axis('Номер участника')
+            .reset_index(name='Количество голосов'))
 
 
 def detail_by_user(df: pd.DataFrame) -> pd.DataFrame:
-    return df[['Имя пользователя', 'Номер участника', 'Дата голосования', 'Дата и время (Excel)']]
+    return df[['Имя пользователя', 'Номер участника', 'Дата голосования', 'Дата и время (Excel)', 'Дата']]
 
 
 def summarize_unique(df: pd.DataFrame) -> pd.DataFrame:
-    return (
-        df.drop_duplicates(subset=['Имя пользователя'], keep='first')['Номер участника']
-        .value_counts()
-        .sort_index()
-        .rename_axis('Номер участника')
-        .reset_index(name='Уникальные голоса')
-    )
+    return (df.drop_duplicates(subset=['Имя пользователя'], keep='first')['Номер участника']
+            .value_counts()
+            .sort_index()
+            .rename_axis('Номер участника')
+            .reset_index(name='Уникальные голоса'))
 
 
 def main():
